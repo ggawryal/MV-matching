@@ -84,9 +84,7 @@ int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const
         bool foundChild = false;
         for(auto a: predecessors[u]) {
             int v = bud[a];
-            cout<<u<<" -> "<<v<<" "<<" "<<stack2.back()<<endl;
             if(color[v] == None) {
-                cout<<"in "<<endl;
                 stack1.push_back(v);
                 support.push_back(v);
                 parentInDDFSTree[v] = u;
@@ -231,23 +229,24 @@ void bfs() {
             }
             else {
                 cerr<<"augumenting path found, from "<<ddfsResult.first<<" to "<<ddfsResult.second<<endl;
+                //TODO
                 exit(0);
             }
         }
-        for(int i=0;i<n;i++) {
-            if(minlvl(i) < INF)
-                cout<<minlvl(i)<<" ";
+        for(int j=0;j<n;j++) {
+            if(minlvl(j) < INF)
+                cerr<<minlvl(j)<<" ";
             else
-                cout<<"X ";
+                cerr<<"X ";
         }
-        cout<<endl;
-        for(int i=0;i<n;i++) {
-            if(maxlvl(i) < INF)
-                cout<<maxlvl(i)<<" ";
+        cerr<<endl;
+        for(int j=0;j<n;j++) {
+            if(maxlvl(j) < INF)
+                cerr<<maxlvl(j)<<" ";
             else
-                cout<<"O ";
+                cerr<<"O ";
         }
-        cout<<endl;
+        cerr<<endl;
     }
 }
 
@@ -274,135 +273,3 @@ int32_t main(){
     }
     bfs();
 }
-
-/*
-Figure 1:
-7 7
-0 1 0
-1 2 1
-2 3 0
-3 4 1
-4 5 0
-5 6 1
-6 2 0
-
-Figure 2,3,4:
-23 25
-0 1 0
-1 2 1
-2 3 0
-3 4 1
-4 5 0
-5 6 1
-6 7 0
-7 8 1
-8 4 0
-7 9 0
-9 10 1
-10 11 0
-11 12 1
-12 13 0
-13 14 1
-14  2 0
-10 15 0
-15 16 1
-16 17 0
-17 18 1
-18 19 0
-19 20 1
-20 21 0
-21 22 1
-22  0 0
-
-Figure 5
-9 10
-0 1 0
-1 2 1
-2 3 0
-3 4 1
-4 5 0
-5 6 1
-6 0 0
-4 7 0
-7 8 1
-8 6 0
-
-Figure 6
-13 14
-0 1 0
-1 2 1
-2 3 0
-3 4 1
-4 5 0
-5 6 1
-6 7 0
-7 8 1
-8 2 0
-8 9 0
-9 10 1
-10 11 0
-11 12 1
-12 0 0
-
-Figure 8 (9,10)
-15 16
-0 1 0
-1 2 1
-2 3 0
-3 4 1
-4 5 0
-5 6 1
-6 7 0
-7 8 1
-8 2 0
-0 9 0
-9 10 1
-10 11 0
-11 12 1
-12 13 0
-13 14 1
-14 4 0
-
-Figure 11
-16 17
-0 1 0
-1 2 1
-2 3 0
-3 4 1
-4 5 0
-5 6 1
-6 2 0
-5 7 0
-7 8 1
-8 9 0
-9 10 1
-10 11 0
-11 12 1
-12 0 0
-10 13 0
-13 14 1
-14 15 0
-
-Figure 12
-17 20
-0 1 0
-1 2 1
-2 3 0
-3 4 1
-4 5 0
-5 6 1
-6 7 0
-7 8 1
-8 4 0
-2 9 0
-9 10 1
-10 11 0
-11 12 1
-12 13 0
-13 14 1
-14 15 0
-15 11 0
-15 16 1
-10 16 0
-16 8 0
-*/
