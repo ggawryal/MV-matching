@@ -208,10 +208,11 @@ vector<int> openPath(vector<int> p, bool saveLast = false) {
 vector<int> openEdge2(int u, int v) {
     if(u == v)
         return {};
-    if(minlvl(u) == evenlvl[u]) { //simply follow predecessors
-        vector<int> p1;
-        assert(openingDfs(u,v,p1));
-        return p1;
+   if(minlvl(u) == evenlvl[u]) { //simply follow predecessors
+        vector<int> res = {u,predecessors[u][0]};
+        int u2 = predecessors[res.back()][0];
+        concat(res,openEdge2(u2,v));
+        return res;
     }
     else { //through bridge
         int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
@@ -224,13 +225,15 @@ vector<int> openEdge2(int u, int v) {
         vector<int> p1,p2;
         assert(openingDfs(u2,u,p1));
         assert(openingDfs(v2,v,p2));
-        p1 = openPath(p1,true);
+        p1.push_back(u);
+        p1 = openPath(p1);
 
         auto p1Prefix = openEdge2(u3,u2);
         concat(p1Prefix, p1);
         p1 = p1Prefix;
         
-        p2 = openPath(p2,true);
+        p2.push_back(v);
+        p2 = openPath(p2);
         auto p2Prefix = openEdge2(v3,v2);
         concat(p2Prefix, p2);
         p2 = p2Prefix;
@@ -248,9 +251,13 @@ vector<int> openEdge(int u, int v) {
     if(find(predecessors[u].begin(),predecessors[u].end(),v) != predecessors[u].end())
         return res;
     for(auto a:predecessors[u]) {
-        if(bud.directParent[a] == v) {
-            concat(res,openEdge2(a,v));
-            return res;
+        int cur = bud.directParent[a];
+        while(cur != -1) { //speedup
+            if(cur == v) {
+                concat(res,openEdge2(a,v));
+                return res;
+            }
+            cur = bud.directParent[cur];
         }
     }
     cerr<<"sth went wron in openEdge..."<<endl;
@@ -437,5 +444,3 @@ int32_t main(){
     }while(bfs());
     cout<<ct-1<<endl;
 }
-
-
