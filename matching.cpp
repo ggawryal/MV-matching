@@ -19,9 +19,11 @@ typedef pair<int,int> pii;
 
 struct DSU {
     vector<int> link;
+    vector<int> directParent;
     void reset(int n) {
         link = vector<int>(n);
         iota(link.begin(), link.end(), 0);
+        directParent = vector<int>(n,-1);
     }
     
     int find(int a) {
@@ -33,7 +35,10 @@ struct DSU {
     }
 
     void linkTo(int a, int b) {
+        assert(directParent[a] == -1);
+        assert(directParent[b] == -1);
         link[find(a)] = find(b);
+        directParent[a] = b;
     }
 
 };
@@ -56,7 +61,11 @@ DSU bud;
 enum Color {None, Red, Green};
 vector<Color> color;
 vector<int> parentInDDFSTree;
+vector<vector<int> > childsInDDFSTree;
+
 vector<Edge> myBridge;
+vector<pair<int,int> > myBudBridge; //bud[bridge]
+vector<int> onPathToBottleneck;
 
 
 int minlvl(int u) { return min(evenlvl[u], oddlvl[u]); }
@@ -71,7 +80,7 @@ int tenacity(Edge e) {
 
 /*
 tries to move color1 down, updating colors, stacks and parents in ddfs tree
-also adds each visited vertex  to support of this bridge
+also adds each visited vertex to support of this bridge
 terminates either when:
     (*) found reachable vertex in lower layer (possibly after backtracking from this color dfs)
     (*) found bottleneck
@@ -88,6 +97,7 @@ int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const
                 stack1.push_back(v);
                 support.push_back(v);
                 parentInDDFSTree[v] = u;
+                childsInDDFSTree[u].push_back(v);
                 color[v] = color1;
                 foundChild = true;
                 break;
@@ -107,7 +117,9 @@ int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const
             //found bottleneck
             assert(stack2.size() == 1);
             color[stack2.back()] = None;
-            parentInDDFSTree[stack2.back()] = -1;
+
+            parentInDDFSTree[stack2.back()] = -1; //bottleneck has no parent, but both candidates for parents has it as child 
+            childsInDDFSTree[alternativeParent].push_back(stack2.back());
             return stack2.back();
         }
         //change colors
@@ -115,7 +127,12 @@ int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const
         assert(color[stack2.back()] == color2);
         color[stack2.back()] = color1;
         assert(alternativeParent != -1);
+    
+        assert(childsInDDFSTree[parentInDDFSTree[stack2.back()]].back() == stack2.back());
+        childsInDDFSTree[parentInDDFSTree[stack2.back()]].pop_back();
+
         parentInDDFSTree[stack2.back()] = alternativeParent;
+        childsInDDFSTree[alternativeParent].push_back(stack2.back());
         stack2.pop_back();
     }
     return -1;
@@ -134,9 +151,6 @@ pair<int,int > ddfs(Edge e, vector<int>& out_support) {
     color[Sg[0]] = Green;
 
     for(;;) {
-        deb(Sr);
-        deb(Sg);
-
         //if found two disjoint paths
         if(minlvl(Sr.back()) == 0 && minlvl(Sg.back()) == 0) {
             out_support.clear();
@@ -163,7 +177,115 @@ bool isVertexMatched(int u) {
     return false;
 }
 
-void bfs() {
+bool openingDfs(int cur, int b,vector<int>& outPath) {
+    if(cur == b)
+        return true;
+    outPath.push_back(cur);
+    for(auto a: childsInDDFSTree[cur]) {
+        if(openingDfs(a,b,outPath))
+            return true;
+    }
+    outPath.pop_back();
+    return false;
+}
+
+void concat(vector<int>& a, const vector<int>& b) {
+    for(auto x : b)
+        a.push_back(x);
+}
+
+vector<int> openEdge(int u, int v);
+
+vector<int> openPath(vector<int> p, bool saveLast = false) {
+    vector<int> res;
+    for(int i=0;i+1<p.size();i++)
+        concat(res,openEdge(p[i],p[i+1]));
+    if(saveLast && p.size() > 0)
+        res.push_back(p.back());
+    return res;
+}
+
+vector<int> openEdge2(int u, int v) {
+    if(u == v)
+        return {};
+    if(minlvl(u) == evenlvl[u]) { //simply follow predecessors
+        vector<int> p1;
+        assert(openingDfs(u,v,p1));
+        return p1;
+    }
+    else { //through bridge
+        int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
+        int u3 = myBridge[u].from, v3 = myBridge[u].to;
+        if(color[u2] != color[u]) {
+            swap(u2, v2);
+            swap(u3,v3);
+        }
+            
+        vector<int> p1,p2;
+        assert(openingDfs(u2,u,p1));
+        assert(openingDfs(v2,v,p2));
+        p1 = openPath(p1,true);
+
+        auto p1Prefix = openEdge2(u3,u2);
+        concat(p1Prefix, p1);
+        p1 = p1Prefix;
+        
+        p2 = openPath(p2,true);
+        auto p2Prefix = openEdge2(v3,v2);
+        concat(p2Prefix, p2);
+        p2 = p2Prefix;
+
+        reverse(p1.begin(),p1.end());
+        vector<int> res = {u};
+        concat(p1,p2);
+        concat(res,p1);
+        return res;
+    }
+}
+
+vector<int> openEdge(int u, int v) {
+    vector<int> res = {u};
+    if(find(predecessors[u].begin(),predecessors[u].end(),v) != predecessors[u].end())
+        return res;
+    for(auto a:predecessors[u]) {
+        if(bud.directParent[a] == v) {
+            concat(res,openEdge2(a,v));
+            return res;
+        }
+    }
+    cerr<<"sth went wron in openEdge..."<<endl;
+    exit(1);
+}
+
+bool checkIfIsGoodAlternatingPath(vector<int> x) {
+    bool lastMatched = false;
+    for(int i=0;i+1<x.size();i++) {
+        bool found = false;
+        for(auto e:graph[x[i]]) {
+            if(e.to == x[i+1]) {
+                if(i > 0 && e.matched == lastMatched) {
+                    cerr<<"not alternating"<<endl;
+                    return false;
+                }
+                lastMatched = e.matched;
+                found = true;
+                break;
+            }
+        }
+        if(!found) {
+            cerr<<"invalid path"<<endl;
+            return false;
+        }
+    }
+    return true;
+}
+
+bool checkIfIsGoodAugumentingPath(vector<int> x) {
+    return checkIfIsGoodAlternatingPath(x) && x.size()%2 == 0 && !isVertexMatched(x[0]);
+
+}
+
+bool bfs() {
     vector<vector<int> > verticesAtLevel(n);
     vector<vector<Edge> > bridges(2*n+2);
 
@@ -174,9 +296,7 @@ void bfs() {
         }
             
     for(int i=0;i<n;i++) {
-        cerr<<"phase "<<i<<endl;
         for(auto u : verticesAtLevel[i]) {
-            cerr<<"["<<u<<"]"<<endl;
             for(auto& e:graph[u]) {
                 if(e.type == NotScanned && ((oddlvl[u] == i && e.matched) || (evenlvl[u] == i && !e.matched))) {
                     if(minlvl(e.to) >= i+1) {
@@ -190,11 +310,9 @@ void bfs() {
                         predecessors[e.to].push_back(u);
                     }
                     else {
-                        cerr<<"new bridge "<<e.from<<" "<<e.to<<endl;
                         e.type = Bridge;
                         graph[e.to][e.other].type = Bridge;
                         if(tenacity(e) < INF) {
-                            cerr<<"found bridge "<<e.from<<" "<<e.to<<" tenacity "<<tenacity(e)<<endl;
                             bridges[tenacity(e)].push_back(e);
                         }
                     }
@@ -207,19 +325,22 @@ void bfs() {
             vector<int> support;
             pair<int,int> ddfsResult = ddfs(e,support);
             if(ddfsResult.first == ddfsResult.second) {
-                cerr<<"found bottleneck "<<ddfsResult.first<<endl;
-                deb(support);
+                if(support.size() != 0) {
+                    assert(support.size() >= 2);
+                    vector<int> ends = {support.back(),support[support.size()-2]};
+                }
+
+                pair<int,int> budBridge = {bud[e.from], bud[e.to]};
                 for(auto v:support) {
                     setLvl(v,2*i+1-minlvl(v));
                     verticesAtLevel[2*i+1-minlvl(v)].push_back(v);
                     myBridge[v] = e;
+                    myBudBridge[v] = budBridge;
                     bud.linkTo(v,ddfsResult.first);
-                    cerr<<v<<" -> "<<bud[v]<<endl;
 
                     if(evenlvl[v] > oddlvl[v]) {
                         for(auto f : graph[v]) {
                             if(f.type == Bridge && tenacity(f) < INF && ((f.matched && oddlvl[v] == maxlvl(v)) || (!f.matched && evenlvl[v] == maxlvl(v)))) {
-                                cerr<<"max found tenacity of new bridge "<<f.from<<" "<<f.to<<endl;
                                 assert(f.type == Bridge);
                                 bridges[tenacity(f)].push_back(f);
                             }
@@ -228,26 +349,52 @@ void bfs() {
                 }
             }
             else {
-                cerr<<"augumenting path found, from "<<ddfsResult.first<<" to "<<ddfsResult.second<<endl;
-                //TODO
-                exit(0);
+                if(color[ddfsResult.first] != color[bud[e.from]])
+                    swap(ddfsResult.first, ddfsResult.first);
+
+                vector<int> p,q;
+                for(auto v : {ddfsResult.first, ddfsResult.second}) {
+                    p.push_back(v);
+                    while(p.back() != bud[e.to] && p.back() != bud[e.from])
+                        p.push_back(parentInDDFSTree[p.back()]);
+                    swap(p,q);
+                }
+                reverse(p.begin(),p.end());
+                reverse(q.begin(),q.end());
+
+                p = openPath(p,true);
+                q = openPath(q,true);
+                auto x = openEdge2(e.from, bud[e.from]);
+                auto y = openEdge2(e.to, bud[e.to]);
+                
+                concat(x,p);
+                concat(y,q);
+                reverse(x.begin(),x.end());
+                concat(x,y);
+                deb(x);
+                if(!checkIfIsGoodAugumentingPath(x)) {
+                    cerr<<"wrong augumenting path!"<<endl;
+                    exit(1);
+                }
+                
+                auto flipMatchingOnEdge = [&](int a, int b) {
+                    for(auto& e:graph[a]) {
+                        if(e.to == b) {
+                            e.matched ^= 1;
+                            graph[e.to][e.other].matched ^= 1;
+                            return;
+                        }
+                    }
+                };
+
+                for(int i=0;i+1<x.size();i++) {
+                    flipMatchingOnEdge(x[i],x[i+1]);
+                }
+                return 1;
             }
         }
-        for(int j=0;j<n;j++) {
-            if(minlvl(j) < INF)
-                cerr<<minlvl(j)<<" ";
-            else
-                cerr<<"X ";
-        }
-        cerr<<endl;
-        for(int j=0;j<n;j++) {
-            if(maxlvl(j) < INF)
-                cerr<<maxlvl(j)<<" ";
-            else
-                cerr<<"O ";
-        }
-        cerr<<endl;
     }
+    return 0;
 }
 
 int32_t main(){
@@ -255,21 +402,40 @@ int32_t main(){
     int m,a,b;
     cin >> n >> m;
     graph.resize(n);
-    predecessors.resize(n);
-    evenlvl.resize(n,INF);
-    oddlvl.resize(n,INF);
-
-
-    bud.reset(n);
-    color.resize(n,None);
-    parentInDDFSTree.resize(n,-1);
-    myBridge.resize(n,{-1,-1,-1,false,NotScanned});
-
     for(int i=0;i<m;i++) {
         int isMatched;
         cin >> a >> b >> isMatched;
-        graph[a].push_back({a, b, (int)graph[b].size(), isMatched, NotScanned});
-        graph[b].push_back({b, a, (int)graph[a].size()-1,isMatched, NotScanned});
+        graph[a].push_back({a, b, (int)graph[b].size(), false, NotScanned});
+        graph[b].push_back({b, a, (int)graph[a].size()-1, false, NotScanned});
     }
-    bfs();
+    int ct = 0;
+    do {
+        for(auto&a: graph) {
+            for(auto&e:a)
+                e.type = NotScanned;
+        }
+        predecessors.clear();
+        predecessors.resize(n);
+        evenlvl.clear();
+        evenlvl.resize(n,INF);
+        oddlvl.clear();
+        oddlvl.resize(n,INF);
+
+
+        bud.reset(n);
+        color.clear();
+        color.resize(n,None);
+        parentInDDFSTree.clear();
+        parentInDDFSTree.resize(n,-1);
+        childsInDDFSTree.clear();
+        childsInDDFSTree.resize(n);
+        myBudBridge.clear();
+        myBudBridge.resize(n);
+        myBridge.clear();
+        myBridge.resize(n,{-1,-1,-1,false,NotScanned});
+        ct++;
+    }while(bfs());
+    cout<<ct-1<<endl;
 }
+
+
