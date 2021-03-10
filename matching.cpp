@@ -1,5 +1,6 @@
 #include<bits/stdc++.h>
 using namespace std;
+
 #ifdef DEBUG
 int D_RECUR_DEPTH = 0;
 #define deb(x) {++D_RECUR_DEPTH; auto x2=x; --D_RECUR_DEPTH; cerr<<string(D_RECUR_DEPTH, '\t')<<"\e[91m"<<__func__<<":"<<__LINE__<<"\t"<<#x<<" = "<<x2<<"\e[39m"<<endl;}
@@ -8,6 +9,7 @@ template<typename Ostream, typename ...Ts>Ostream& operator<<(Ostream& ost,  con
 #else
 #define deb(x)
 #endif
+
 
 template<class C> C reversed(C c) {reverse(c.begin(),c.end()); return c;}
 #define mp make_pair
@@ -56,6 +58,7 @@ const int INF = 1e9;
 int n;
 vector<vector<Edge> > graph;
 vector<vector<int> > predecessors;
+vector<int> removed;
 vector<int> evenlvl, oddlvl;
 DSU bud;
 enum Color {None, Red, Green};
@@ -88,11 +91,15 @@ terminates either when:
 */
 int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const Color color2, vector<int>& support) {
     int alternativeParent = -1;
-    while(stack1.size() > 0) {
+    while(stack1.size() > 0) { 
         int u = stack1.back();
         bool foundChild = false;
         for(auto a: predecessors[u]) {
             int v = bud[a];
+            assert(removed[a] == removed[v]);
+            if(removed[a])  {
+                continue;
+            }
             if(color[v] == None) {
                 stack1.push_back(v);
                 support.push_back(v);
@@ -116,6 +123,7 @@ int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const
         if(stack2.size() <= 1) {
             //found bottleneck
             assert(stack2.size() == 1);
+            assert(alternativeParent != -1);
             color[stack2.back()] = None;
 
             parentInDDFSTree[stack2.back()] = -1; //bottleneck has no parent, but both candidates for parents has it as child 
@@ -182,7 +190,7 @@ bool openingDfs(int cur, int b,vector<int>& outPath) {
         return true;
     outPath.push_back(cur);
     for(auto a: childsInDDFSTree[cur]) {
-        if(openingDfs(a,b,outPath))
+        if(!removed[a] && openingDfs(a,b,outPath))
             return true;
     }
     outPath.pop_back();
@@ -260,7 +268,7 @@ vector<int> openEdge(int u, int v) {
             cur = bud.directParent[cur];
         }
     }
-    cerr<<"sth went wron in openEdge..."<<endl;
+    cerr<<"sth went wrong in openEdge..."<<endl;
     exit(1);
 }
 
@@ -296,16 +304,21 @@ bool bfs() {
     vector<vector<int> > verticesAtLevel(n);
     vector<vector<Edge> > bridges(2*n+2);
 
+    removed.clear();
+    removed.resize(n);
+    vector<int> removedPredecessorsSize(n);
+
     for(int u=0;u<n;u++)
         if(!isVertexMatched(u)) {
             verticesAtLevel[0].push_back(u);
             setLvl(u,0);
         }
-            
-    for(int i=0;i<n;i++) {
+
+    bool foundPath = false;  
+    for(int i=0;i<n && !foundPath;i++) {
         for(auto u : verticesAtLevel[i]) {
             for(auto& e:graph[u]) {
-                if(e.type == NotScanned && ((oddlvl[u] == i && e.matched) || (evenlvl[u] == i && !e.matched))) {
+                if(e.type == NotScanned && ((oddlvl[u] == i && e.matched) || (evenlvl[u] == i && !e.matched))) { //fix
                     if(minlvl(e.to) >= i+1) {
                         e.type = Prop;
                         graph[e.to][e.other].type = Prop;
@@ -329,6 +342,8 @@ bool bfs() {
         
 
         for(auto e : bridges[2*i+1]) {
+            if(removed[e.from] || removed[e.to])
+                continue;
             vector<int> support;
             pair<int,int> ddfsResult = ddfs(e,support);
             if(ddfsResult.first == ddfsResult.second) {
@@ -347,7 +362,7 @@ bool bfs() {
 
                     if(evenlvl[v] > oddlvl[v]) {
                         for(auto f : graph[v]) {
-                            if(f.type == Bridge && tenacity(f) < INF && ((f.matched && oddlvl[v] == maxlvl(v)) || (!f.matched && evenlvl[v] == maxlvl(v)))) {
+                            if(f.type == Bridge && tenacity(f) < INF && !f.matched) {
                                 assert(f.type == Bridge);
                                 bridges[tenacity(f)].push_back(f);
                             }
@@ -357,7 +372,7 @@ bool bfs() {
             }
             else {
                 if(color[ddfsResult.first] != color[bud[e.from]])
-                    swap(ddfsResult.first, ddfsResult.first);
+                    swap(ddfsResult.first, ddfsResult.second);
 
                 vector<int> p,q;
                 for(auto v : {ddfsResult.first, ddfsResult.second}) {
@@ -383,25 +398,38 @@ bool bfs() {
                     cerr<<"wrong augumenting path!"<<endl;
                     exit(1);
                 }
-                
-                auto flipMatchingOnEdge = [&](int a, int b) {
-                    for(auto& e:graph[a]) {
-                        if(e.to == b) {
-                            e.matched ^= 1;
-                            graph[e.to][e.other].matched ^= 1;
-                            return;
-                        }
-                    }
-                };
+                foundPath = true;
+                queue<int> removingVerticesQueue;
+                for(auto &v: x) {
+                    removed[v] = true;
+                    removingVerticesQueue.push(v);
+                }
 
                 for(int i=0;i+1<x.size();i++) {
-                    flipMatchingOnEdge(x[i],x[i+1]);
+                    for(auto &e: graph[x[i]]) {
+                        if(e.to == x[i+1]) {
+                            e.matched ^= 1;
+                            graph[e.to][e.other].matched ^= 1;
+                        }
+                    }
                 }
-                return 1;
+                while(!removingVerticesQueue.empty()) {
+                    int v = removingVerticesQueue.front();
+                    removingVerticesQueue.pop();
+                    for(auto e : graph[v]) {
+                        if(e.type == Prop && !removed[e.to]) {
+                            removedPredecessorsSize[e.to]++;
+                            if(removedPredecessorsSize[e.to] == predecessors[e.to].size()) {
+                                removed[e.to] = true;
+                                removingVerticesQueue.push(e.to);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
-    return 0;
+    return foundPath;
 }
 
 int32_t main(){
@@ -415,8 +443,9 @@ int32_t main(){
         graph[a].push_back({a, b, (int)graph[b].size(), false, NotScanned});
         graph[b].push_back({b, a, (int)graph[a].size()-1, false, NotScanned});
     }
-    int ct = 0;
+    int iters = 0;
     do {
+        iters++;
         for(auto&a: graph) {
             for(auto&e:a)
                 e.type = NotScanned;
@@ -440,7 +469,11 @@ int32_t main(){
         myBudBridge.resize(n);
         myBridge.clear();
         myBridge.resize(n,{-1,-1,-1,false,NotScanned});
-        ct++;
     }while(bfs());
-    cout<<ct-1<<endl;
+
+    int cnt = 0;
+    for(int i=0;i<n;i++)
+        if(isVertexMatched(i))
+            cnt++;
+    cout<<cnt/2<<" after "<<iters<<" iterations"<<endl;
 }
