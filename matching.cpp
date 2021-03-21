@@ -1,22 +1,8 @@
 #include<bits/stdc++.h>
 using namespace std;
 
-#ifdef DEBUG
-int D_RECUR_DEPTH = 0;
-#define deb(x) {++D_RECUR_DEPTH; auto x2=x; --D_RECUR_DEPTH; cerr<<string(D_RECUR_DEPTH, '\t')<<"\e[91m"<<__func__<<":"<<__LINE__<<"\t"<<#x<<" = "<<x2<<"\e[39m"<<endl;}
-template<typename O, typename C> typename enable_if<is_same<O,ostream>::value, O&>::type operator<<(O& ost,  const C& v){if(&ost == &cout) {cerr<<"Warning, printing debugs on cout!"<<endl;} ost<<"["; bool firstIter = true; for(auto& x:v){ if(firstIter) firstIter = false; else ost<<", "; ost<<x;} return ost<<"]";}
-template<typename Ostream, typename ...Ts>Ostream& operator<<(Ostream& ost,  const pair<Ts...>& p){if(&ost == &cout) {cerr<<"Warning, printing debugs [pair] on cout!"<<endl;}return ost<<"{"<<p.first<<", "<<p.second<<"}";}
-#else
-#define deb(x)
-#endif
-
-
-template<class C> C reversed(C c) {reverse(c.begin(),c.end()); return c;}
-#define mp make_pair
 #define st first
 #define nd second
-typedef long long ll;
-typedef pair<int,int> pii;
 
 
 struct DSU {
@@ -91,10 +77,10 @@ terminates either when:
 */
 int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const Color color2, vector<int>& support) {
     int alternativeParent = -1;
-    while(stack1.size() > 0) { 
+    while(stack1.size() > 0) {
         int u = stack1.back();
         bool foundChild = false;
-        for(auto a: predecessors[u]) {
+        for(auto a: predecessors[u]) { //speedup
             int v = bud[a];
             assert(removed[a] == removed[v]);
             if(removed[a])  {
@@ -120,7 +106,7 @@ int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const
     }
 
     if(stack1.size() == 0) {
-        if(stack2.size() <= 1) {
+        if(stack2.size() <= 1) { //can stack2 have one non-bud vertex?
             //found bottleneck
             assert(stack2.size() == 1);
             assert(alternativeParent != -1);
@@ -217,22 +203,33 @@ vector<int> openEdge2(int u, int v) {
     if(u == v)
         return {};
    if(minlvl(u) == evenlvl[u]) { //simply follow predecessors
+        assert(predecessors[u].size() == 1); //u should be evenlevel (last minlevel edge is matched, so there is only one predecessor)
         vector<int> res = {u,predecessors[u][0]};
-        int u2 = predecessors[res.back()][0];
-        concat(res,openEdge2(u2,v));
+
+        int idx = 0;
+        while(removed[predecessors[res.back()][idx]]) { 
+            idx++; 
+            assert(idx < (int)predecessors[res.back()].size());
+        }
+
+        concat(res,openEdge2(predecessors[res.back()][idx],v));
         return res;
     }
     else { //through bridge
         int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
         int u3 = myBridge[u].from, v3 = myBridge[u].to;
-        if(color[u2] != color[u]) {
+        if((myBudBridge[u2] == myBudBridge[u] && color[u2] != color[u]) || (myBudBridge[v2] == myBudBridge[u] && color[v2] == color[u])) {
             swap(u2, v2);
             swap(u3,v3);
         }
             
         vector<int> p1,p2;
-        assert(openingDfs(u2,u,p1));
-        assert(openingDfs(v2,v,p2));
+        bool openingDfsSucceed1 = openingDfs(u2,u,p1);
+        bool openingDfsSucceed2 = openingDfs(v2,v,p2);
+
+        assert(openingDfsSucceed1);
+        assert(openingDfsSucceed2);
+
         p1.push_back(u);
         p1 = openPath(p1);
 
@@ -341,29 +338,23 @@ bool bfs() {
         }
         
 
-        for(auto e : bridges[2*i+1]) {
-            if(removed[e.from] || removed[e.to])
+        for(auto b : bridges[2*i+1]) {
+            if(removed[b.from] || removed[b.to])
                 continue;
             vector<int> support;
-            pair<int,int> ddfsResult = ddfs(e,support);
+            pair<int,int> ddfsResult = ddfs(b,support);
             if(ddfsResult.first == ddfsResult.second) {
-                if(support.size() != 0) {
-                    assert(support.size() >= 2);
-                    vector<int> ends = {support.back(),support[support.size()-2]};
-                }
-
-                pair<int,int> budBridge = {bud[e.from], bud[e.to]};
+                pair<int,int> budBridge = {bud[b.from], bud[b.to]};
                 for(auto v:support) {
                     setLvl(v,2*i+1-minlvl(v));
                     verticesAtLevel[2*i+1-minlvl(v)].push_back(v);
-                    myBridge[v] = e;
+                    myBridge[v] = b;
                     myBudBridge[v] = budBridge;
                     bud.linkTo(v,ddfsResult.first);
 
                     if(evenlvl[v] > oddlvl[v]) {
                         for(auto f : graph[v]) {
                             if(f.type == Bridge && tenacity(f) < INF && !f.matched) {
-                                assert(f.type == Bridge);
                                 bridges[tenacity(f)].push_back(f);
                             }
                         }
@@ -371,29 +362,27 @@ bool bfs() {
                 }
             }
             else {
-                if(color[ddfsResult.first] != color[bud[e.from]])
+                if(color[ddfsResult.first] != color[bud[b.from]])
                     swap(ddfsResult.first, ddfsResult.second);
 
                 vector<int> p,q;
                 for(auto v : {ddfsResult.first, ddfsResult.second}) {
                     p.push_back(v);
-                    while(p.back() != bud[e.to] && p.back() != bud[e.from])
+                    while(p.back() != bud[b.to] && p.back() != bud[b.from])
                         p.push_back(parentInDDFSTree[p.back()]);
                     swap(p,q);
                 }
                 reverse(p.begin(),p.end());
                 reverse(q.begin(),q.end());
-
                 p = openPath(p,true);
                 q = openPath(q,true);
-                auto x = openEdge2(e.from, bud[e.from]);
-                auto y = openEdge2(e.to, bud[e.to]);
+                auto x = openEdge2(b.from, bud[b.from]);
+                auto y = openEdge2(b.to, bud[b.to]);
                 
                 concat(x,p);
                 concat(y,q);
                 reverse(x.begin(),x.end());
                 concat(x,y);
-                deb(x);
                 if(!checkIfIsGoodAugumentingPath(x)) {
                     cerr<<"wrong augumenting path!"<<endl;
                     exit(1);
@@ -405,9 +394,9 @@ bool bfs() {
                     removingVerticesQueue.push(v);
                 }
 
-                for(int i=0;i+1<x.size();i++) {
-                    for(auto &e: graph[x[i]]) {
-                        if(e.to == x[i+1]) {
+                for(int j=0;j+1<x.size();j++) {
+                    for(auto &e: graph[x[j]]) {
+                        if(e.to == x[j+1]) {
                             e.matched ^= 1;
                             graph[e.to][e.other].matched ^= 1;
                         }
@@ -417,7 +406,7 @@ bool bfs() {
                     int v = removingVerticesQueue.front();
                     removingVerticesQueue.pop();
                     for(auto e : graph[v]) {
-                        if(e.type == Prop && !removed[e.to]) {
+                        if(e.type == Prop && minlvl(e.to) > minlvl(e.from) && !removed[e.to]) {
                             removedPredecessorsSize[e.to]++;
                             if(removedPredecessorsSize[e.to] == predecessors[e.to].size()) {
                                 removed[e.to] = true;
@@ -434,14 +423,15 @@ bool bfs() {
 
 int32_t main(){
     ios::sync_with_stdio(false);
-    int m,a,b;
+    int m;
     cin >> n >> m;
     graph.resize(n);
     for(int i=0;i<m;i++) {
-        int isMatched;
+        int a,b,isMatched;
         cin >> a >> b >> isMatched;
-        graph[a].push_back({a, b, (int)graph[b].size(), false, NotScanned});
-        graph[b].push_back({b, a, (int)graph[a].size()-1, false, NotScanned});
+        //isMatched = false;
+        graph[a].push_back({a, b, (int)graph[b].size(), isMatched, NotScanned});
+        graph[b].push_back({b, a, (int)graph[a].size()-1, isMatched, NotScanned});
     }
     int iters = 0;
     do {
@@ -475,5 +465,5 @@ int32_t main(){
     for(int i=0;i<n;i++)
         if(isVertexMatched(i))
             cnt++;
-    cout<<cnt/2<<" after "<<iters<<" iterations"<<endl;
+    cout<<cnt/2<<endl;//<<" after "<<iters<<" iterations"<<endl;
 }
