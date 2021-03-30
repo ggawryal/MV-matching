@@ -56,17 +56,21 @@ const int INF = 1e9;
 int n;
 vector<vector<Edge> > graph;
 vector<vector<int> > predecessors;
+vector<int> ddfsPredecessorsPtr;
 vector<int> removed;
 vector<int> evenlvl, oddlvl;
 DSU bud;
-enum Color {None, Red, Green};
-vector<Color> color;
-vector<int> parentInDDFSTree;
-vector<vector<int> > childsInDDFSTree;
+
+int globalColorCounter; //reset to 1
+//colors for bridges are numbered (2,3), (4,5), (6,7) ...
+//to check if vertices belong to same petal check if color1/2 == color2/2
+//color^1 is the other color for single ddfs run
+
+vector<int> color;
+vector<vector<int> > childsInDDFSTree; //may also contain other color vertices which previously were its childs
 
 vector<Edge> myBridge;
 vector<pair<int,int> > myBudBridge; //bud[bridge]
-vector<int> onPathToBottleneck;
 
 
 int minlvl(int u) { return min(evenlvl[u], oddlvl[u]); }
@@ -80,81 +84,59 @@ int tenacity(Edge e) {
 }
 
 /*
-tries to move color1 down, updating colors, stacks and parents in ddfs tree
+tries to move color1 down, updating colors, stacks and childs in ddfs tree
 also adds each visited vertex to support of this bridge
-terminates either when:
-    (*) found reachable vertex in lower layer (possibly after backtracking from this color dfs)
-    (*) found bottleneck
-    (*) backtracked whole stack and recolored other color's center of activity since no other path not visiting this vertex found
 */
-int ddfsMove(vector<int>& stack1, const Color color1, vector<int>& stack2, const Color color2, vector<int>& support) {
-    int alternativeParent = -1;
-    while(stack1.size() > 0) {
-        int u = stack1.back();
-        bool foundChild = false;
-        for(auto a: predecessors[u]) { //speedup
-            int v = bud[a];
-            assert(removed[a] == removed[v]);
-            if(removed[a])  {
-                continue;
-            }
-            if(color[v] == None) {
-                stack1.push_back(v);
-                support.push_back(v);
-                parentInDDFSTree[v] = u;
-                childsInDDFSTree[u].push_back(v);
-                color[v] = color1;
-                foundChild = true;
-                break;
-            }
-            else if(v == stack2.back()) {
-                alternativeParent = u;
-            }
-        }
-        if(!foundChild)
-            stack1.pop_back();
-        else if(minlvl(stack1.back()) <= minlvl(stack2.back())) //should be ok in both cases: when color1 == Red and when color1 == Green
+int ddfsMove(vector<int>& stack1, const int color1, vector<int>& stack2, const int color2, vector<int>& support) {
+    int u = stack1.back();
+    for(; ddfsPredecessorsPtr[u] < predecessors[u].size(); ddfsPredecessorsPtr[u]++) { //speedup
+        int a = predecessors[u][ddfsPredecessorsPtr[u]];
+        int v = bud[a];
+        assert(removed[a] == removed[v]);
+        if(removed[a])
+            continue;
+        if(color[v] == 0) {
+            stack1.push_back(v);
+            support.push_back(v);
+            childsInDDFSTree[u].push_back(v);
+            color[v] = color1;
             return -1;
+        }
+        else if(v == stack2.back())
+            childsInDDFSTree[u].push_back(v);
     }
+    stack1.pop_back();
 
     if(stack1.size() == 0) {
-        if(stack2.size() <= 1) { //can stack2 have one non-bud vertex?
-            //found bottleneck
-            assert(stack2.size() == 1);
-            assert(alternativeParent != -1);
-            color[stack2.back()] = None;
-
-            parentInDDFSTree[stack2.back()] = -1; //bottleneck has no parent, but both candidates for parents has it as child 
-            childsInDDFSTree[alternativeParent].push_back(stack2.back());
+        if(stack2.size() == 1) { //found bottleneck
+            color[stack2.back()] = 0;
             return stack2.back();
         }
         //change colors
-        stack1.push_back(stack2.back());
         assert(color[stack2.back()] == color2);
-        color[stack2.back()] = color1;
-        assert(alternativeParent != -1);
-    
-        assert(childsInDDFSTree[parentInDDFSTree[stack2.back()]].back() == stack2.back());
-        childsInDDFSTree[parentInDDFSTree[stack2.back()]].pop_back();
-
-        parentInDDFSTree[stack2.back()] = alternativeParent;
-        childsInDDFSTree[alternativeParent].push_back(stack2.back());
+        stack1.push_back(stack2.back());
+        color[stack1.back()] = color1;
         stack2.pop_back();
     }
     return -1;
 }
 
+
 //returns {r0, g0} or {bottleneck, bottleneck}
 pair<int,int > ddfs(Edge e, vector<int>& out_support) {
     assert(e.type == Bridge);
+    
     vector<int> Sr = {bud[e.from]}, Sg = {bud[e.to]};
     if(Sr[0] == Sg[0]) {
         out_support = {};
         return {Sr[0],Sg[0]};
     }
     out_support = {Sr[0], Sg[0]};
-    color[Sr[0]] = Red;
-    color[Sg[0]] = Green;
+    int newRed = ++globalColorCounter;
+    int newGreen = ++globalColorCounter;
+    assert(newRed == (newGreen^1));
+    color[Sr[0]] = newRed;
+    color[Sg[0]] = newGreen;
 
     for(;;) {
         //if found two disjoint paths
@@ -165,9 +147,9 @@ pair<int,int > ddfs(Edge e, vector<int>& out_support) {
     
         int b;
         if(minlvl(Sr.back()) >= minlvl(Sg.back()))
-            b = ddfsMove(Sr,Red,Sg,Green, out_support);
+            b = ddfsMove(Sr,newRed,Sg, newGreen, out_support);
         else
-            b = ddfsMove(Sg,Green,Sr,Red, out_support);
+            b = ddfsMove(Sg,newGreen,Sr, newRed, out_support);
         if(b != -1) {
             out_support.erase(remove(out_support.begin(),out_support.end(),b),out_support.end());
             return {b,b};
@@ -187,8 +169,8 @@ bool openingDfs(int cur, int b,vector<int>& outPath) {
     if(cur == b)
         return true;
     outPath.push_back(cur);
-    for(auto a: childsInDDFSTree[cur]) {
-        if(!removed[a] && openingDfs(a,b,outPath))
+    for(auto a: childsInDDFSTree[cur]) { 
+        if(a == b || (color[a] == color[cur] && !removed[a] && openingDfs(a,b,outPath)))
             return true;
     }
     outPath.pop_back();
@@ -230,7 +212,7 @@ vector<int> openEdge2(int u, int v) {
     else { //through bridge
         int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
         int u3 = myBridge[u].from, v3 = myBridge[u].to;
-        if((myBudBridge[u2] == myBudBridge[u] && color[u2] != color[u]) || (myBudBridge[v2] == myBudBridge[u] && color[v2] == color[u])) {
+        if((color[u2]^1) == color[u] || color[v2] == color[u]) {
             swap(u2, v2);
             swap(u3,v3);
         }
@@ -382,14 +364,10 @@ bool bfs() {
                     swap(ddfsResult.first, ddfsResult.second);
 
                 vector<int> p,q;
-                for(auto v : {ddfsResult.first, ddfsResult.second}) {
-                    p.push_back(v);
-                    while(p.back() != bud[b.to] && p.back() != bud[b.from])
-                        p.push_back(parentInDDFSTree[p.back()]);
-                    swap(p,q);
-                }
-                reverse(p.begin(),p.end());
-                reverse(q.begin(),q.end());
+                openingDfs(bud[b.from],ddfsResult.first,p);
+                openingDfs(bud[b.to],ddfsResult.second,q);
+                p.push_back(ddfsResult.first);
+                q.push_back(ddfsResult.second);
                 p = openPath(p,true);
                 q = openPath(q,true);
                 auto x = openEdge2(b.from, bud[b.from]);
@@ -400,7 +378,7 @@ bool bfs() {
                 reverse(x.begin(),x.end());
                 concat(x,y);
                 deb(x);
-		if(!checkIfIsGoodAugumentingPath(x)) {
+		        if(!checkIfIsGoodAugumentingPath(x)) {
                     cerr<<"wrong augumenting path!"<<endl;
                     exit(1);
                 }
@@ -459,17 +437,17 @@ int32_t main(){
         }
         predecessors.clear();
         predecessors.resize(n);
+        ddfsPredecessorsPtr.clear();
+        ddfsPredecessorsPtr.resize(n);
         evenlvl.clear();
         evenlvl.resize(n,INF);
         oddlvl.clear();
         oddlvl.resize(n,INF);
 
-
+        globalColorCounter = 1;
         bud.reset(n);
         color.clear();
-        color.resize(n,None);
-        parentInDDFSTree.clear();
-        parentInDDFSTree.resize(n,-1);
+        color.resize(n,0);
         childsInDDFSTree.clear();
         childsInDDFSTree.resize(n);
         myBudBridge.clear();
