@@ -1,8 +1,20 @@
 #include<bits/stdc++.h>
 using namespace std;
+#ifdef DEBUG
+int D_RECUR_DEPTH = 0;
+#define deb(x) {++D_RECUR_DEPTH; auto x2=x; --D_RECUR_DEPTH; cerr<<string(D_RECUR_DEPTH, '\t')<<"\e[91m"<<__func__<<":"<<__LINE__<<"\t"<<#x<<" = "<<x2<<"\e[39m"<<endl;}
+template<typename O, typename C> typename enable_if<is_same<O,ostream>::value, O&>::type operator<<(O& ost,  const C& v){if(&ost == &cout) {cerr<<"Warning, printing debugs on cout!"<<endl;} ost<<"["; bool firstIter = true; for(auto& x:v){ if(firstIter) firstIter = false; else ost<<", "; ost<<x;} return ost<<"]";}
+template<typename Ostream, typename ...Ts>Ostream& operator<<(Ostream& ost,  const pair<Ts...>& p){if(&ost == &cout) {cerr<<"Warning, printing debugs [pair] on cout!"<<endl;}return ost<<"{"<<p.first<<", "<<p.second<<"}";}
+#else
+#define deb(x)
+#endif
 
+template<class C> C reversed(C c) {reverse(c.begin(),c.end()); return c;}
+#define mp make_pair
 #define st first
 #define nd second
+typedef long long ll;
+typedef pair<int,int> pii;
 
 
 struct DSU {
@@ -222,12 +234,13 @@ vector<int> openEdge2(int u, int v) {
             swap(u2, v2);
             swap(u3,v3);
         }
-            
+
         vector<int> p1,p2;
         bool openingDfsSucceed1 = openingDfs(u2,u,p1);
-        bool openingDfsSucceed2 = openingDfs(v2,v,p2);
-
         assert(openingDfsSucceed1);
+
+        int v4 = myBudBridge[v] == myBudBridge[v2] ? v : bud.directParent[v2];
+        bool openingDfsSucceed2 = openingDfs(v2,v4,p2);
         assert(openingDfsSucceed2);
 
         p1.push_back(u);
@@ -237,11 +250,14 @@ vector<int> openEdge2(int u, int v) {
         concat(p1Prefix, p1);
         p1 = p1Prefix;
         
-        p2.push_back(v);
+        p2.push_back(v4);
         p2 = openPath(p2);
         auto p2Prefix = openEdge2(v3,v2);
         concat(p2Prefix, p2);
         p2 = p2Prefix;
+        
+        if(v4 != v)
+            concat(p2, openEdge2(v4,v));
 
         reverse(p1.begin(),p1.end());
         vector<int> res = {u};
@@ -383,7 +399,8 @@ bool bfs() {
                 concat(y,q);
                 reverse(x.begin(),x.end());
                 concat(x,y);
-                if(!checkIfIsGoodAugumentingPath(x)) {
+                deb(x);
+		if(!checkIfIsGoodAugumentingPath(x)) {
                     cerr<<"wrong augumenting path!"<<endl;
                     exit(1);
                 }
