@@ -1,21 +1,7 @@
 #include<bits/stdc++.h>
 using namespace std;
-#ifdef DEBUG
-int D_RECUR_DEPTH = 0;
-#define deb(x) {++D_RECUR_DEPTH; auto x2=x; --D_RECUR_DEPTH; cerr<<string(D_RECUR_DEPTH, '\t')<<"\e[91m"<<__func__<<":"<<__LINE__<<"\t"<<#x<<" = "<<x2<<"\e[39m"<<endl;}
-template<typename O, typename C> typename enable_if<is_same<O,ostream>::value, O&>::type operator<<(O& ost,  const C& v){if(&ost == &cout) {cerr<<"Warning, printing debugs on cout!"<<endl;} ost<<"["; bool firstIter = true; for(auto& x:v){ if(firstIter) firstIter = false; else ost<<", "; ost<<x;} return ost<<"]";}
-template<typename Ostream, typename ...Ts>Ostream& operator<<(Ostream& ost,  const pair<Ts...>& p){if(&ost == &cout) {cerr<<"Warning, printing debugs [pair] on cout!"<<endl;}return ost<<"{"<<p.first<<", "<<p.second<<"}";}
-#else
-#define deb(x)
-#endif
-
-template<class C> C reversed(C c) {reverse(c.begin(),c.end()); return c;}
-#define mp make_pair
 #define st first
 #define nd second
-typedef long long ll;
-typedef pair<int,int> pii;
-
 
 struct DSU {
     vector<int> link;
@@ -67,7 +53,7 @@ int globalColorCounter; //reset to 1
 //color^1 is the other color for single ddfs run
 
 vector<int> color;
-vector<vector<int> > childsInDDFSTree; //may also contain other color vertices which previously were its childs
+vector<vector<pair<int,int> > > childsInDDFSTree; //{x, bud[x] at the moment when ddfs started}; may also contain other color vertices which previously were its childs 
 
 vector<Edge> myBridge;
 vector<pair<int,int> > myBudBridge; //bud[bridge]
@@ -89,7 +75,7 @@ also adds each visited vertex to support of this bridge
 */
 int ddfsMove(vector<int>& stack1, const int color1, vector<int>& stack2, const int color2, vector<int>& support) {
     int u = stack1.back();
-    for(; ddfsPredecessorsPtr[u] < predecessors[u].size(); ddfsPredecessorsPtr[u]++) { //speedup
+    for(; ddfsPredecessorsPtr[u] < predecessors[u].size(); ddfsPredecessorsPtr[u]++) {
         int a = predecessors[u][ddfsPredecessorsPtr[u]];
         int v = bud[a];
         assert(removed[a] == removed[v]);
@@ -98,12 +84,12 @@ int ddfsMove(vector<int>& stack1, const int color1, vector<int>& stack2, const i
         if(color[v] == 0) {
             stack1.push_back(v);
             support.push_back(v);
-            childsInDDFSTree[u].push_back(v);
+            childsInDDFSTree[u].push_back({a,v});
             color[v] = color1;
             return -1;
         }
         else if(v == stack2.back())
-            childsInDDFSTree[u].push_back(v);
+            childsInDDFSTree[u].push_back({a,v});
     }
     stack1.pop_back();
 
@@ -141,7 +127,7 @@ pair<int,int > ddfs(Edge e, vector<int>& out_support) {
     for(;;) {
         //if found two disjoint paths
         if(minlvl(Sr.back()) == 0 && minlvl(Sg.back()) == 0) {
-            out_support.clear();
+            out_support.erase(remove(out_support.begin(),out_support.end(),Sg.back()),out_support.end());
             return {Sr.back(),Sg.back()};
         }
     
@@ -165,14 +151,17 @@ bool isVertexMatched(int u) {
     return false;
 }
 
-bool openingDfs(int cur, int b,vector<int>& outPath) {
-    if(cur == b)
-        return true;
+bool openingDfs(int cur, int bcur, int b,vector<int>& outPath) {
     outPath.push_back(cur);
-    for(auto a: childsInDDFSTree[cur]) { 
-        if(a == b || (color[a] == color[cur] && !removed[a] && openingDfs(a,b,outPath)))
+    outPath.push_back(bcur);
+    
+    if(bcur == b)
+        return true;
+    for(auto a: childsInDDFSTree[bcur]) { 
+        if((a.nd == b || color[a.nd] == color[bcur]) && /*!removed[a.nd] &&*/ openingDfs(a.st,a.nd,b,outPath))
             return true;
     }
+    outPath.pop_back();
     outPath.pop_back();
     return false;
 }
@@ -182,90 +171,56 @@ void concat(vector<int>& a, const vector<int>& b) {
         a.push_back(x);
 }
 
-vector<int> openEdge(int u, int v);
 
-vector<int> openPath(vector<int> p, bool saveLast = false) {
+vector<int> openPath(vector<int> p, bool initial = false) {
+    assert(p.size() % 2 == 0);
     vector<int> res;
-    for(int i=0;i+1<p.size();i++)
-        concat(res,openEdge(p[i],p[i+1]));
-    if(saveLast && p.size() > 0)
-        res.push_back(p.back());
+    for(int i=0;i+1<p.size();i+=2) {
+        int u = p[i], v = p[i+1];
+        if(u == v)
+            res.push_back(u);
+        else if(!initial && minlvl(u) == evenlvl[u]) { //simply follow predecessors
+            assert(predecessors[u].size() == 1); //u should be evenlevel (last minlevel edge is matched, so there is only one predecessor)
+            concat(res,{u,predecessors[u][0]});
+
+            int idx = 0;
+            while(removed[predecessors[res.back()][idx]]) {
+                idx++; 
+                assert(idx < (int)predecessors[res.back()].size());
+            }
+
+            concat(res,openPath({predecessors[res.back()][idx],v}));
+        }
+        else { //through bridge
+            int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
+            int u3 = myBridge[u].from, v3 = myBridge[u].to;
+            if((color[u2]^1) == color[u] || color[v2] == color[u]) {
+                swap(u2, v2);
+                swap(u3,v3);
+            }
+
+            vector<int> p1,p2;
+            bool openingDfsSucceed1 = openingDfs(u3,u2,u,p1);
+            assert(openingDfsSucceed1);
+            
+            int v4 = myBudBridge[v] == myBudBridge[v2] ? v : bud.directParent[v2];
+            bool openingDfsSucceed2 = openingDfs(v3,v2,v4,p2);
+            assert(openingDfsSucceed2);
+
+            p1 = openPath(p1);
+            p2 = openPath(p2);
+            if(v4 != v) {
+                p2.pop_back();
+                concat(p2, openPath({v4,v}));
+            }
+            reverse(p1.begin(),p1.end());
+            concat(p1,p2);
+            concat(res,p1);
+        }
+    }
     return res;
 }
 
-vector<int> openEdge2(int u, int v) {
-    if(u == v)
-        return {};
-   if(minlvl(u) == evenlvl[u]) { //simply follow predecessors
-        assert(predecessors[u].size() == 1); //u should be evenlevel (last minlevel edge is matched, so there is only one predecessor)
-        vector<int> res = {u,predecessors[u][0]};
-
-        int idx = 0;
-        while(removed[predecessors[res.back()][idx]]) { 
-            idx++; 
-            assert(idx < (int)predecessors[res.back()].size());
-        }
-
-        concat(res,openEdge2(predecessors[res.back()][idx],v));
-        return res;
-    }
-    else { //through bridge
-        int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
-        int u3 = myBridge[u].from, v3 = myBridge[u].to;
-        if((color[u2]^1) == color[u] || color[v2] == color[u]) {
-            swap(u2, v2);
-            swap(u3,v3);
-        }
-
-        vector<int> p1,p2;
-        bool openingDfsSucceed1 = openingDfs(u2,u,p1);
-        assert(openingDfsSucceed1);
-
-        int v4 = myBudBridge[v] == myBudBridge[v2] ? v : bud.directParent[v2];
-        bool openingDfsSucceed2 = openingDfs(v2,v4,p2);
-        assert(openingDfsSucceed2);
-
-        p1.push_back(u);
-        p1 = openPath(p1);
-
-        auto p1Prefix = openEdge2(u3,u2);
-        concat(p1Prefix, p1);
-        p1 = p1Prefix;
-        
-        p2.push_back(v4);
-        p2 = openPath(p2);
-        auto p2Prefix = openEdge2(v3,v2);
-        concat(p2Prefix, p2);
-        p2 = p2Prefix;
-        
-        if(v4 != v)
-            concat(p2, openEdge2(v4,v));
-
-        reverse(p1.begin(),p1.end());
-        vector<int> res = {u};
-        concat(p1,p2);
-        concat(res,p1);
-        return res;
-    }
-}
-
-vector<int> openEdge(int u, int v) {
-    vector<int> res = {u};
-    if(find(predecessors[u].begin(),predecessors[u].end(),v) != predecessors[u].end())
-        return res;
-    for(auto a:predecessors[u]) {
-        int cur = bud.directParent[a];
-        while(cur != -1) { //speedup
-            if(cur == v) {
-                concat(res,openEdge2(a,v));
-                return res;
-            }
-            cur = bud.directParent[cur];
-        }
-    }
-    cerr<<"sth went wrong in openEdge..."<<endl;
-    exit(1);
-}
 
 bool checkIfIsGoodAlternatingPath(vector<int> x) {
     bool lastMatched = false;
@@ -313,7 +268,7 @@ bool bfs() {
     for(int i=0;i<n && !foundPath;i++) {
         for(auto u : verticesAtLevel[i]) {
             for(auto& e:graph[u]) {
-                if(e.type == NotScanned && ((oddlvl[u] == i && e.matched) || (evenlvl[u] == i && !e.matched))) { //fix
+                if(e.type == NotScanned && (oddlvl[u] == i) == e.matched) {
                     if(minlvl(e.to) >= i+1) {
                         e.type = Prop;
                         graph[e.to][e.other].type = Prop;
@@ -360,38 +315,27 @@ bool bfs() {
                 }
             }
             else {
-                if(color[ddfsResult.first] != color[bud[b.from]])
-                    swap(ddfsResult.first, ddfsResult.second);
-
-                vector<int> p,q;
-                openingDfs(bud[b.from],ddfsResult.first,p);
-                openingDfs(bud[b.to],ddfsResult.second,q);
-                p.push_back(ddfsResult.first);
-                q.push_back(ddfsResult.second);
-                p = openPath(p,true);
-                q = openPath(q,true);
-                auto x = openEdge2(b.from, bud[b.from]);
-                auto y = openEdge2(b.to, bud[b.to]);
-                
-                concat(x,p);
-                concat(y,q);
-                reverse(x.begin(),x.end());
-                concat(x,y);
-                deb(x);
-		        if(!checkIfIsGoodAugumentingPath(x)) {
+                pair<int,int> budBridge = {bud[b.from], bud[b.to]};
+                for(auto v:support) {
+                    myBridge[v] = b;
+                    myBudBridge[v] = budBridge;
+                    bud.linkTo(v,ddfsResult.second);
+                }
+                auto p = openPath({ddfsResult.first,ddfsResult.second},true);
+		        if(!checkIfIsGoodAugumentingPath(p)) {
                     cerr<<"wrong augumenting path!"<<endl;
                     exit(1);
                 }
                 foundPath = true;
                 queue<int> removingVerticesQueue;
-                for(auto &v: x) {
+                for(auto &v: p) {
                     removed[v] = true;
                     removingVerticesQueue.push(v);
                 }
 
-                for(int j=0;j+1<x.size();j++) {
-                    for(auto &e: graph[x[j]]) {
-                        if(e.to == x[j+1]) {
+                for(int j=0;j+1<p.size();j++) {
+                    for(auto &e: graph[p[j]]) {
+                        if(e.to == p[j+1]) {
                             e.matched ^= 1;
                             graph[e.to][e.other].matched ^= 1;
                         }
