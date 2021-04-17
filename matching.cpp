@@ -165,8 +165,7 @@ bool openingDfs(int cur, int bcur, int b,vector<pii>& outPath) {
     return false;
 }
 
-template<class T>
-void concat(vector<T>& a, const vector<T>& b) {
+void concat(vector<int>& a, const vector<int>& b) {
     for(auto x : b)
         a.push_back(x);
 }
