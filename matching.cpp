@@ -2,6 +2,7 @@
 using namespace std;
 #define st first
 #define nd second
+typedef pair<int,int> pii;
 
 struct DSU {
     vector<int> link;
@@ -151,9 +152,8 @@ bool isVertexMatched(int u) {
     return false;
 }
 
-bool openingDfs(int cur, int bcur, int b,vector<int>& outPath) {
-    outPath.push_back(cur);
-    outPath.push_back(bcur);
+bool openingDfs(int cur, int bcur, int b,vector<pii>& outPath) {
+    outPath.push_back({cur,bcur});
     
     if(bcur == b)
         return true;
@@ -162,21 +162,19 @@ bool openingDfs(int cur, int bcur, int b,vector<int>& outPath) {
             return true;
     }
     outPath.pop_back();
-    outPath.pop_back();
     return false;
 }
 
-void concat(vector<int>& a, const vector<int>& b) {
+template<class T>
+void concat(vector<T>& a, const vector<T>& b) {
     for(auto x : b)
         a.push_back(x);
 }
 
 
-vector<int> openPath(vector<int> p, bool initial = false) {
-    assert(p.size() % 2 == 0);
+vector<int> openPath(vector<pii> p, bool initial = false) {
     vector<int> res;
-    for(int i=0;i+1<p.size();i+=2) {
-        int u = p[i], v = p[i+1];
+    for(auto [u,v] : p) {
         if(u == v)
             res.push_back(u);
         else if(!initial && minlvl(u) == evenlvl[u]) { //simply follow predecessors
@@ -184,12 +182,12 @@ vector<int> openPath(vector<int> p, bool initial = false) {
             concat(res,{u,predecessors[u][0]});
 
             int idx = 0;
-            while(removed[predecessors[res.back()][idx]]) {
+            while(bud[predecessors[res.back()][idx]] != bud[res.back()]) {
                 idx++; 
                 assert(idx < (int)predecessors[res.back()].size());
             }
-
-            concat(res,openPath({predecessors[res.back()][idx],v}));
+            assert(!removed[predecessors[res.back()][idx]]);
+            concat(res,openPath({{predecessors[res.back()][idx],v}}));
         }
         else { //through bridge
             int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
@@ -199,7 +197,7 @@ vector<int> openPath(vector<int> p, bool initial = false) {
                 swap(u3,v3);
             }
 
-            vector<int> p1,p2;
+            vector<pii> p1,p2;
             bool openingDfsSucceed1 = openingDfs(u3,u2,u,p1);
             assert(openingDfsSucceed1);
             
@@ -207,15 +205,15 @@ vector<int> openPath(vector<int> p, bool initial = false) {
             bool openingDfsSucceed2 = openingDfs(v3,v2,v4,p2);
             assert(openingDfsSucceed2);
 
-            p1 = openPath(p1);
-            p2 = openPath(p2);
+            auto op1 = openPath(p1);
+            auto op2 = openPath(p2);
             if(v4 != v) {
-                p2.pop_back();
-                concat(p2, openPath({v4,v}));
+                op2.pop_back();
+                concat(op2, openPath({{v4,v}}));
             }
-            reverse(p1.begin(),p1.end());
-            concat(p1,p2);
-            concat(res,p1);
+            reverse(op1.begin(),op1.end());
+            concat(op1,op2);
+            concat(res,op1);
         }
     }
     return res;
@@ -321,7 +319,7 @@ bool bfs() {
                     myBudBridge[v] = budBridge;
                     bud.linkTo(v,ddfsResult.second);
                 }
-                auto p = openPath({ddfsResult.first,ddfsResult.second},true);
+                auto p = openPath({{ddfsResult.first,ddfsResult.second}},true);
 		        if(!checkIfIsGoodAugumentingPath(p)) {
                     cerr<<"wrong augumenting path!"<<endl;
                     exit(1);
