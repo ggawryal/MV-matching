@@ -79,7 +79,6 @@ int ddfsMove(vector<int>& stack1, const int color1, vector<int>& stack2, const i
     for(; ddfsPredecessorsPtr[u] < predecessors[u].size(); ddfsPredecessorsPtr[u]++) {
         int a = predecessors[u][ddfsPredecessorsPtr[u]];
         int v = bud[a];
-        assert(removed[a] == removed[v]);
         if(removed[a])
             continue;
         if(color[v] == 0) {
@@ -149,7 +148,7 @@ bool openingDfs(int cur, int bcur, int b,vector<pii>& outPath) {
     if(bcur == b)
         return true;
     for(auto a: childsInDDFSTree[bcur]) { 
-        if((a.nd == b || color[a.nd] == color[bcur]) && /*!removed[a.nd] &&*/ openingDfs(a.st,a.nd,b,outPath))
+        if((a.nd == b || color[a.nd] == color[bcur]) && openingDfs(a.st,a.nd,b,outPath))
             return true;
     }
     outPath.pop_back();
@@ -241,9 +240,6 @@ bool checkIfIsGoodAugumentingPath(vector<int> x) {
 bool bfs() {
     vector<vector<int> > verticesAtLevel(n);
     vector<vector<Edge> > bridges(2*n+2);
-
-    removed.clear();
-    removed.resize(n);
     vector<int> removedPredecessorsSize(n);
 
     for(int u=0;u<n;u++)
@@ -280,7 +276,7 @@ bool bfs() {
         
 
         for(auto b : bridges[2*i+1]) {
-            if(removed[b.from] || removed[b.to])
+            if(removed[bud[b.from]] || removed[bud[b.to]])
                 continue;
             vector<int> support;
             pair<int,int> ddfsResult = ddfs(b,support);
@@ -341,6 +337,23 @@ bool bfs() {
     return foundPath;
 }
 
+void mvMatching() {
+    do {
+        for(auto&a: graph)
+            for(auto&e:a)
+                e.type = NotScanned;
+        
+        predecessors = vector<vector<int> > (n);
+        ddfsPredecessorsPtr = color = removed = vector<int>(n);
+        evenlvl = oddlvl = vector<int>(n,INF);
+        myBudBridge = vector<pii>(n);
+        childsInDDFSTree = vector<vector<pii> > (n);
+        globalColorCounter = 1;
+        bud.reset(n);
+        myBridge = vector<Edge> (n,{-1,-1,-1,false,NotScanned});        
+    }while(bfs());
+}
+
 int32_t main(){
     ios::sync_with_stdio(false);
     int m;
@@ -353,34 +366,8 @@ int32_t main(){
         graph[a].push_back({a, b, (int)graph[b].size(), isMatched, NotScanned});
         graph[b].push_back({b, a, (int)graph[a].size()-1, isMatched, NotScanned});
     }
-    int iters = 0;
-    do {
-        iters++;
-        for(auto&a: graph) {
-            for(auto&e:a)
-                e.type = NotScanned;
-        }
-        predecessors.clear();
-        predecessors.resize(n);
-        ddfsPredecessorsPtr.clear();
-        ddfsPredecessorsPtr.resize(n);
-        evenlvl.clear();
-        evenlvl.resize(n,INF);
-        oddlvl.clear();
-        oddlvl.resize(n,INF);
-
-        globalColorCounter = 1;
-        bud.reset(n);
-        color.clear();
-        color.resize(n,0);
-        childsInDDFSTree.clear();
-        childsInDDFSTree.resize(n);
-        myBudBridge.clear();
-        myBudBridge.resize(n);
-        myBridge.clear();
-        myBridge.resize(n,{-1,-1,-1,false,NotScanned});
-    }while(bfs());
-
+   
+    mvMatching();
     int cnt = 0;
     for(int i=0;i<n;i++)
         if(isVertexMatched(i))
