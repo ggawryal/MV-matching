@@ -114,35 +114,26 @@ pair<int,int > ddfs(Edge e, vector<int>& out_support) {
     assert(e.type == Bridge);
     
     vector<int> Sr = {bud[e.from]}, Sg = {bud[e.to]};
-    if(Sr[0] == Sg[0]) {
-        out_support = {};
+    if(Sr[0] == Sg[0])
         return {Sr[0],Sg[0]};
-    }
+
     out_support = {Sr[0], Sg[0]};
-    int newRed = ++globalColorCounter;
-    int newGreen = ++globalColorCounter;
+    int newRed = color[Sr[0]] = ++globalColorCounter, newGreen = color[Sg[0]] = ++globalColorCounter;
     assert(newRed == (newGreen^1));
-    color[Sr[0]] = newRed;
-    color[Sg[0]] = newGreen;
 
     for(;;) {
         //if found two disjoint paths
-        if(minlvl(Sr.back()) == 0 && minlvl(Sg.back()) == 0) {
-            out_support.erase(remove(out_support.begin(),out_support.end(),Sg.back()),out_support.end());
+        if(minlvl(Sr.back()) == 0 && minlvl(Sg.back()) == 0)
             return {Sr.back(),Sg.back()};
-        }
     
         int b;
         if(minlvl(Sr.back()) >= minlvl(Sg.back()))
             b = ddfsMove(Sr,newRed,Sg, newGreen, out_support);
         else
             b = ddfsMove(Sg,newGreen,Sr, newRed, out_support);
-        if(b != -1) {
-            out_support.erase(remove(out_support.begin(),out_support.end(),b),out_support.end());
+        if(b != -1)
             return {b,b};
-        }
     }
-    exit(1);
 }
 
 bool isVertexMatched(int u) {
@@ -293,31 +284,24 @@ bool bfs() {
                 continue;
             vector<int> support;
             pair<int,int> ddfsResult = ddfs(b,support);
-            if(ddfsResult.first == ddfsResult.second) {
-                pair<int,int> budBridge = {bud[b.from], bud[b.to]};
-                for(auto v:support) {
-                    setLvl(v,2*i+1-minlvl(v));
-                    verticesAtLevel[2*i+1-minlvl(v)].push_back(v);
-                    myBridge[v] = b;
-                    myBudBridge[v] = budBridge;
-                    bud.linkTo(v,ddfsResult.first);
+            pair<int,int> budBridge = {bud[b.from], bud[b.to]};
 
-                    if(evenlvl[v] > oddlvl[v]) {
-                        for(auto f : graph[v]) {
-                            if(f.type == Bridge && tenacity(f) < INF && !f.matched) {
-                                bridges[tenacity(f)].push_back(f);
-                            }
-                        }
-                    }
-                }
+            for(auto v:support) {
+                if(v == ddfsResult.second) continue; //skip bud
+                myBridge[v] = b;
+                myBudBridge[v] = budBridge;
+                bud.linkTo(v,ddfsResult.second);
+
+                //this part of code is only needed when bottleneck found, but it don't mess up anything when called on two paths
+                verticesAtLevel[2*i+1-minlvl(v)].push_back(v);
+                setLvl(v,2*i+1-minlvl(v));
+
+                for(auto f : graph[v])
+                    if(evenlvl[v] > oddlvl[v] && f.type == Bridge && tenacity(f) < INF && !f.matched)
+                        bridges[tenacity(f)].push_back(f);
             }
-            else {
-                pair<int,int> budBridge = {bud[b.from], bud[b.to]};
-                for(auto v:support) {
-                    myBridge[v] = b;
-                    myBudBridge[v] = budBridge;
-                    bud.linkTo(v,ddfsResult.second);
-                }
+
+            if(ddfsResult.first != ddfsResult.second) {
                 auto p = openPath({{ddfsResult.first,ddfsResult.second}},true);
 		        if(!checkIfIsGoodAugumentingPath(p)) {
                     cerr<<"wrong augumenting path!"<<endl;
