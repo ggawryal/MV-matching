@@ -55,14 +55,10 @@ int globalColorCounter; //reset to 1
 
 vector<int> color;
 vector<vector<pair<int,int> > > childsInDDFSTree; //{x, bud[x] at the moment when ddfs started}; may also contain other color vertices which previously were its childs 
-
-vector<Edge> myBridge;
-vector<pair<int,int> > myBudBridge; //bud[bridge]
+vector<pair<pii,pii> > myBridge; // bridge, bud[bridge]
 
 
 int minlvl(int u) { return min(evenlvl[u], oddlvl[u]); }
-int maxlvl(int u) { return max(evenlvl[u], oddlvl[u]); }
-void setLvl(int u, int i) { if(i&1) oddlvl[u] = i; else evenlvl[u] = i;}
 
 int tenacity(Edge e) {
     if(e.matched)
@@ -144,10 +140,12 @@ bool isVertexMatched(int u) {
 }
 
 queue<int> removedVerticesQueue;
+
+void removeAndPushToQueue(int u) {if(!removed[u]) {removed[u] = 1; removedVerticesQueue.push(u);}}
+
 void flip(int u, int v) {
-    if(!removed[u]) removedVerticesQueue.push(u);
-    if(!removed[v]) removedVerticesQueue.push(v);
-    removed[u] = removed[v] = 1;
+    removeAndPushToQueue(u);
+    removeAndPushToQueue(v);
     bool found = false;
     for(auto &a:graph[v]) {
         if(a.to == u) {
@@ -194,21 +192,20 @@ void augumentPath(int u, int v, bool initial) {
         augumentPath(u,v);
     }
     else { //through bridge
-        int u2 = myBudBridge[u].first, v2 = myBudBridge[u].second;
-        int u3 = myBridge[u].from, v3 = myBridge[u].to;
+        auto [u3,v3] = myBridge[u].st; auto [u2,v2] = myBridge[u].nd;
         if((color[u2]^1) == color[u] || color[v2] == color[u]) {
             swap(u2, v2);
             swap(u3,v3);
         }
 
+        flip(u3,v3);
         bool openingDfsSucceed1 = openingDfs(u3,u2,u);
         assert(openingDfsSucceed1);
-        int v4 = myBudBridge[v] == myBudBridge[v2] ? v : bud.directParent[v2];
+
+        int v4 = bud.directParent[u];
         bool openingDfsSucceed2 = openingDfs(v3,v2,v4);
         assert(openingDfsSucceed2);
-        flip(u3,v3);
-        if(v4 != v)
-            augumentPath(v4,v);
+        augumentPath(v4,v);
     }
 }
 
@@ -229,11 +226,14 @@ bool bfs() {
     vector<vector<Edge> > bridges(2*n+2);
     vector<int> removedPredecessorsSize(n);
 
+    auto setLvl = [&](int u, int lev) {
+        if(lev&1) oddlvl[u] = lev; else evenlvl[u] = lev;
+        verticesAtLevel[lev].push_back(u);
+    };
+
     for(int u=0;u<n;u++)
-        if(!isVertexMatched(u)) {
-            verticesAtLevel[0].push_back(u);
+        if(!isVertexMatched(u))
             setLvl(u,0);
-        }
 
     bool foundPath = false;  
     for(int i=0;i<n && !foundPath;i++) {
@@ -244,10 +244,8 @@ bool bfs() {
                         e.type = Prop;
                         graph[e.to][e.other].type = Prop;
 
-                        if(minlvl(e.to) > i+1) {
+                        if(minlvl(e.to) > i+1)
                             setLvl(e.to,i+1);
-                            verticesAtLevel[i+1].push_back(e.to);
-                        }
                         predecessors[e.to].push_back(u);
                     }
                     else {
@@ -267,18 +265,14 @@ bool bfs() {
                 continue;
             vector<int> support;
             pair<int,int> ddfsResult = ddfs(b,support);
-            pair<int,int> budBridge = {bud[b.from], bud[b.to]};
-
+            pair<pii,pii> curBridge = {{b.from,b.to},{bud[b.from], bud[b.to]}};
             for(auto v:support) {
                 if(v == ddfsResult.second) continue; //skip bud
-                myBridge[v] = b;
-                myBudBridge[v] = budBridge;
+                myBridge[v] = curBridge;
                 bud.linkTo(v,ddfsResult.second);
 
-                //this part of code is only needed when bottleneck found, but it don't mess up anything when called on two paths
-                verticesAtLevel[2*i+1-minlvl(v)].push_back(v);
+                //this part of code is only needed when bottleneck found, but it doesn't mess up anything when called on two paths
                 setLvl(v,2*i+1-minlvl(v));
-
                 for(auto f : graph[v])
                     if(evenlvl[v] > oddlvl[v] && f.type == Bridge && tenacity(f) < INF && !f.matched)
                         bridges[tenacity(f)].push_back(f);
@@ -290,12 +284,9 @@ bool bfs() {
                 while(!removedVerticesQueue.empty()) {
                     int v = removedVerticesQueue.front();
                     removedVerticesQueue.pop();
-                    for(auto e : graph[v]) {
-                        if(e.type == Prop && minlvl(e.to) > minlvl(e.from) && !removed[e.to] && ++removedPredecessorsSize[e.to] == predecessors[e.to].size()) {
-                            removed[e.to] = true;
-                            removedVerticesQueue.push(e.to);
-                        }
-                    }
+                    for(auto e : graph[v])
+                        if(e.type == Prop && minlvl(e.to) > minlvl(e.from) && !removed[e.to] && ++removedPredecessorsSize[e.to] == predecessors[e.to].size())
+                            removeAndPushToQueue(e.to);
                 }
             }
         }
@@ -312,11 +303,10 @@ void mvMatching() {
         predecessors = vector<vector<int> > (n);
         ddfsPredecessorsPtr = color = removed = vector<int>(n);
         evenlvl = oddlvl = vector<int>(n,INF);
-        myBudBridge = vector<pii>(n);
         childsInDDFSTree = vector<vector<pii> > (n);
         globalColorCounter = 1;
         bud.reset(n);
-        myBridge = vector<Edge> (n,{-1,-1,-1,false,NotScanned});        
+        myBridge = vector<pair<pii,pii> >(n);        
     }while(bfs());
     checkGraph();
 }
