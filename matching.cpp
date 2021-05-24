@@ -1,15 +1,24 @@
+//complexity O(E sqrt(V) log*(V))
 #include<bits/stdc++.h>
 using namespace std;
 #define st first
 #define nd second
 typedef pair<int,int> pii;
 
+
+//disjoint set union data structure
 struct DSU {
     vector<int> link;
     vector<int> directParent;
+    vector<int> size;
+    vector<int> groupRoot;
+
+
     void reset(int n) {
         link = vector<int>(n);
+        size = vector<int>(n,1);
         iota(link.begin(), link.end(), 0);
+        groupRoot = link;
         directParent = vector<int>(n,-1);
     }
     
@@ -18,14 +27,23 @@ struct DSU {
     }
 
     int operator[](const int& a) {
-        return find(a);
+        return groupRoot[find(a)];
     }
 
     void linkTo(int a, int b) {
         assert(directParent[a] == -1);
         assert(directParent[b] == -1);
-        link[find(a)] = find(b);
         directParent[a] = b;
+        a = find(a);
+        b = find(b);
+        int gr = groupRoot[b];
+        assert(a != b);
+        
+        if(size[a] > size[b])
+            swap(a,b);
+        link[b] = a;
+        size[a] += size[b];
+        groupRoot[a] = gr;
     }
 
 };
@@ -34,21 +52,23 @@ enum EdgeType {NotScanned, Prop, Bridge};
 struct Edge {
     int to;
     int other;
-    EdgeType type = NotScanned;
+    EdgeType type;
+    Edge(int _to, int _other, EdgeType _type = NotScanned) : to(_to), other(_other), type(_type) {}
 };
 
 const int INF = 1e9;
 
-int n;
-vector<int> mate;
-vector<vector<Edge> > graph;
+int n; //IN: nuber of vertices
+vector<vector<Edge> > graph; //IN: graph as neighbours list
+vector<int> mate; //OUT: vertex which is matched with given, or -1 is unmatched
+
 vector<vector<int> > predecessors;
 vector<int> ddfsPredecessorsPtr;
 vector<int> removed;
 vector<int> evenlvl, oddlvl;
 DSU bud;
 
-int globalColorCounter; //reset to 1
+int globalColorCounter; //resets to 1 after each iteration
 //colors for bridges are numbered (2,3), (4,5), (6,7) ...
 //to check if vertices belong to same petal check if color1/2 == color2/2
 //color^1 is the other color for single ddfs run
@@ -176,7 +196,7 @@ void augumentPath(int u, int v, bool initial) {
         augumentPath(u,v);
     }
     else { //through bridge
-        auto [u3,v3] = myBridge[u].st; auto [u2,v2] = myBridge[u].nd;
+        auto u3 = myBridge[u].st.st, v3 = myBridge[u].st.nd, u2 = myBridge[u].nd.st, v2 = myBridge[u].nd.nd;
         if((color[u2]^1) == color[u] || color[v2] == color[u]) {
             swap(u2, v2);
             swap(u3,v3);
@@ -191,11 +211,6 @@ void augumentPath(int u, int v, bool initial) {
         assert(openingDfsSucceed2);
         augumentPath(v4,v);
     }
-}
-
-void checkGraph() {
-    for(int i=0;i<n;i++)
-        assert(mate[i] == -1 || mate[mate[i]] == i);
 }
 
 bool bfs() {
@@ -274,6 +289,13 @@ bool bfs() {
     return foundPath;
 }
 
+//just for testing purposes
+void checkGraph() {
+    for(int i=0;i<n;i++)
+        assert(mate[i] == -1 || mate[mate[i]] == i);
+}
+
+
 void mvMatching() {
     mate = vector<int>(n,-1);
     do {
@@ -298,14 +320,13 @@ int32_t main(){
     cin >> n >> m;
     graph.resize(n);
     for(int i=0;i<m;i++) {
-        int a,b,isMatched;
-        cin >> a >> b >> isMatched;
-        isMatched = false;
-        graph[a].push_back({b, (int)graph[b].size(), NotScanned});
-        graph[b].push_back({a, (int)graph[a].size()-1, NotScanned});
+        int a,b;
+        cin >> a >> b;
+        graph[a].push_back(Edge(b, (int)graph[b].size()));
+        graph[b].push_back(Edge(a, (int)graph[a].size()-1));
     }
-   
     mvMatching();
     int cnt =  (n-count(mate.begin(),mate.end(),-1));
-    cout<<cnt/2<<endl;//<<" after "<<iters<<" iterations"<<endl;
+    cout<<cnt/2<<endl;
+    return 0;
 }
